@@ -1,0 +1,40 @@
+{
+    "name": "frootbox/webhooks",
+    "description": "Webhooks for the Frootbox CMS: tell other services about changes, signed after Standard Webhooks and sent in the background",
+    "type": "frootbox-extension",
+    "license": "MIT",
+    "keywords": [
+        "cms",
+        "frootbox",
+        "webhooks",
+        "standard-webhooks",
+        "integration"
+    ],
+    "require": {
+        "php": ">=8.5",
+        "frootbox/core": "^0.1",
+        "frootbox/database": "^0.1",
+        "psr/http-message": "^2.0",
+        "psr/http-server-handler": "^1.0",
+        "symfony/http-client": "^8.1"
+    },
+    "suggest": {
+        "frootbox/backend": "The screen to set up webhooks and see their deliveries"
+    },
+    "autoload": {
+        "psr-4": {
+            "Frootbox\\Webhooks\\": "src/",
+            "Frootbox\\Webhooks\\Migrations\\": "migrations/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Frootbox\\Webhooks\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "branch-alias": {
+            "dev-main": "0.1.x-dev"
+        }
+    }
+}

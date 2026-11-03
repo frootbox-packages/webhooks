@@ -1,0 +1,19 @@
+{#- Badges for the state of a webhook and of a delivery (decision 0253). -#}
+
+{% macro webhook(webhook) -%}
+    {%- import '@backend/ui.twig' as ui -%}
+    {%- if not webhook.paused -%}
+        {{ ui.badge('published', t('Active')) }}
+    {%- elseif webhook.pausedReason == 'failing' -%}
+        {{ ui.badge('danger', t('Paused after failures')) }}
+    {%- else -%}
+        {{ ui.badge('draft', t('Paused')) }}
+    {%- endif -%}
+{%- endmacro %}
+
+{% macro delivery(delivery) -%}
+    {%- import '@backend/ui.twig' as ui -%}
+    {%- set labels = {pending: [t('Waiting'), 'scheduled'], retrying: [t('Retrying'), 'changed'], delivered: [t('Delivered'), 'published'], failed: [t('Failed'), 'danger'], skipped: [t('Skipped'), 'neutral']} -%}
+    {%- set label = labels[delivery.status] ?? [delivery.status, 'neutral'] -%}
+    {{ ui.badge(label[1], label[0]) }}
+{%- endmacro %}

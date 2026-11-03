@@ -1,0 +1,171 @@
+{#- A new webhook or one to edit (decision 0253): title, address and the actions as checks by group, the secret once, its deliveries with "Send again". -#}
+{% extends '@backend/layout.twig' %}
+{% import '@backend/ui.twig' as ui %}
+{% import '@frootbox/webhooks/backend/status.twig' as status %}
+{% set refresh = 'webhook-detail' %}
+{% set list = path('frootbox.webhooks.webhooks') %}
+{% set heading = webhook ? webhook.title : t('New webhook') %}
+{% set editable = webhook ? can('frootbox/webhooks/webhook.update') : can('frootbox/webhooks/webhook.create') %}
+
+{% block title %}{{ heading }} · {{ t('Webhooks') }}{% endblock %}
+
+{% block content %}
+<div class="fb-stack fb-stack--lg" id="webhook-detail">
+    <header class="fb-page-header">
+        <div class="fb-page-header__text">
+            <p class="fb-muted"><a href="{{ list }}">{{ t('Webhooks') }}</a></p>
+            <h1 class="fb-heading-1" tabindex="-1" data-fb-focus>{{ heading }}</h1>
+        </div>
+        {% if webhook %}<div class="fb-cluster">{{ status.webhook(webhook) }}</div>{% endif %}
+    </header>
+
+    {% if webhook and webhook.pausedReason == 'failing' %}
+    {% set parts = t('No delivery succeeded for {days} days, so the webhook was paused on {time}. Check the address, then resume it.', {days: 5})|split('{time}') %}
+    {% set text %}{{ parts[0] }}{{ ui.time(webhook.pausedAt) }}{{ parts[1] ?? '' }}{% endset %}
+    {{ ui.alert({tone: 'danger', text: text, live: 'none'}) }}
+    {% elseif webhook and webhook.paused %}
+    {{ ui.alert({tone: 'info', text: t('The webhook is paused. Nothing is sent until you resume it.'), live: 'none'}) }}
+    {% endif %}
+
+    {% if webhook %}
+    <div class="fb-cluster">
+        {% if webhook.paused and can('frootbox/webhooks/webhook.resume') %}
+        <fb-form action="frootbox/webhooks/webhook.resume" refresh="{{ refresh }}" done="{{ t('The webhook is active again.') }}">
+            <form novalidate><input type="hidden" name="id" value="{{ webhook.id }}">{{ ui.button({label: t('Resume'), type: 'submit'}) }}</form>
+        </fb-form>
+        {% elseif not webhook.paused and can('frootbox/webhooks/webhook.pause') %}
+        <fb-form action="frootbox/webhooks/webhook.pause" refresh="{{ refresh }}" done="{{ t('The webhook is paused.') }}">
+            <form novalidate><input type="hidden" name="id" value="{{ webhook.id }}">{{ ui.button({label: t('Pause'), type: 'submit', variant: 'outline'}) }}</form>
+        </fb-form>
+        {% endif %}
+        {% if can('frootbox/webhooks/webhook.test') %}
+        <fb-form action="frootbox/webhooks/webhook.test" refresh="{{ refresh }}" done="{{ t('A test event is on its way.') }}">
+            <form novalidate><input type="hidden" name="id" value="{{ webhook.id }}">{{ ui.button({label: t('Send a test'), type: 'submit', variant: 'outline', icon: 'external'}) }}</form>
+        </fb-form>
+        {% endif %}
+        {% if can('frootbox/webhooks/webhook.rotate-secret') %}
+            {{ ui.button({label: t('New secret'), variant: 'outline', icon: 'lock', attrs: {commandfor: 'webhook-rotate', command: 'show-modal'}}) }}
+        {% endif %}
+        {% if can('frootbox/webhooks/webhook.delete') %}
+            {{ ui.button({label: t('Delete'), variant: 'danger', icon: 'trash', attrs: {commandfor: 'webhook-delete', command: 'show-modal'}}) }}
+        {% endif %}
+    </div>
+    <div class="fb-stack fb-stack--sm" id="webhook-new-secret" hidden>
+        {{ ui.alert({tone: 'warning', title: t('Copy the new secret now'), text: t('It is shown only this once. The old one no longer works; the receiver needs the new one.')}) }}
+        <code class="fb-secret" data-fb-value="secret"></code>
+    </div>
+    {% endif %}
+
+    <fb-form action="frootbox/webhooks/webhook.{{ webhook ? 'update' : 'create' }}"{% if webhook %} refresh="{{ refresh }}" done="{{ t('The webhook is saved.') }}"{% else %} show="webhook-secret" done="{{ t('The webhook is set up.') }}"{% endif %}>
+        <form class="fb-card fb-card--padded fb-stack" novalidate{% if not webhook %} id="webhook-create"{% endif %}>
+            {% if webhook %}<input type="hidden" name="id" value="{{ webhook.id }}">{% endif %}
+            {{ ui.field({label: t('Title'), name: 'title', value: webhook.title ?? '', required: true, disabled: not editable, placeholder: t('e.g. Shop sync'), attrs: {maxlength: 100}}) }}
+            {{ ui.field({label: t('Address'), name: 'url', type: 'url', value: webhook.url ?? '', required: true, disabled: not editable, placeholder: 'https://example.com/hooks', hint: t('Only https:// and an address on the internet. Each message is signed after Standard Webhooks with the secret of the webhook.'), attrs: {maxlength: 2000, spellcheck: 'false'}}) }}
+            <fieldset class="fb-fieldset" id="field-actions">
+                <legend class="fb-fieldset__legend">{{ t('Send on these actions') }}</legend>
+                <p class="fb-hint">{{ t('"All" includes actions that come later, e.g. with a new module.') }}</p>
+                {%- for group in groups %}
+                <details class="fb-disclosure"{% if group.count %} open{% endif %}>
+                    <summary class="fb-disclosure__summary"><code>{{ group.group }}</code> · {{ t('{count} of {total} chosen', {count: group.count, total: group.actions|length}) }}</summary>
+                    <div class="fb-checks">
+                        {{ ui.check({label: t('All of {group}', {group: group.group}), name: 'actions[]', value: group.pattern, id: 'webhook-all-' ~ loop.index, checked: group.all, disabled: not editable, hint: group.pattern}) }}
+                        <div class="fb-checks">
+                            {%- for action in group.actions %}
+                            {{ ui.check({label: action.description, name: 'actions[]', value: action.name, id: 'webhook-action-' ~ loop.parent.loop.index ~ '-' ~ loop.index, checked: action.checked, disabled: not editable, hint: action.name}) }}
+                            {%- endfor %}
+                        </div>
+                    </div>
+                </details>
+                {%- endfor %}
+            </fieldset>
+            {% if editable %}
+            <div class="fb-form__actions">
+                {{ ui.button({label: webhook ? t('Save') : t('Set up the webhook'), type: 'submit', saves: webhook is not null}) }}
+                {% if not webhook %}{{ ui.button({label: t('Cancel'), variant: 'ghost', href: list}) }}{% endif %}
+            </div>
+            {% endif %}
+        </form>
+    </fb-form>
+
+    {% if not webhook %}
+    <div class="fb-stack fb-stack--sm" id="webhook-secret" hidden>
+        {{ ui.alert({tone: 'warning', title: t('Copy the secret now'), text: t('It is shown only this once. The receiver checks each message with it.')}) }}
+        <code class="fb-secret" data-fb-value="secret"></code>
+        <div>{{ ui.button({label: t('Done'), variant: 'outline', href: list}) }}</div>
+    </div>
+    {% endif %}
+
+    {% if webhook %}
+    <section class="fb-card" aria-labelledby="webhook-deliveries-title">
+        <div class="fb-card__header">
+            <h2 class="fb-heading-4" id="webhook-deliveries-title">{{ t('Deliveries') }}</h2>
+            {{ ui.badge('neutral', deliveries|length) }}
+        </div>
+        {% if deliveries is empty %}
+        <div class="fb-card__body">{{ ui.empty({icon: 'inbox', title: t('No deliveries yet'), text: t('They show up here for 30 days, with the answer of the address.')}) }}</div>
+        {% else %}
+        <ul>
+            {%- for delivery in deliveries %}
+            <li class="fb-list__item">
+                <span class="fb-list__main">
+                    <code class="fb-list__title">{{ delivery.action }}</code>
+                    <span class="fb-list__meta">{{ ui.time(delivery.createdAt) }} · {{ t(['{count} attempt', '{count} attempts'], {count: delivery.attempts}) }}{% if delivery.responseCode %} · {{ t('Status {code}', {code: delivery.responseCode}) }}{% endif %}{% if delivery.durationMs is not null %} · {{ delivery.durationMs }} ms{% endif %}</span>
+                    {% if delivery.error and delivery.status != 'delivered' %}<span class="fb-list__meta">{{ t(delivery.error) }}</span>{% endif %}
+                    <details class="fb-disclosure">
+                        <summary class="fb-disclosure__summary">{{ t('Message') }}</summary>
+                        <code class="fb-secret fb-disclosure__body">{{ delivery.body }}</code>
+                    </details>
+                </span>
+                {{ status.delivery(delivery) }}
+                {% if delivery.status in ['failed', 'skipped'] and can('frootbox/webhooks/delivery.retry') %}
+                <fb-form action="frootbox/webhooks/delivery.retry" refresh="{{ refresh }}" done="{{ t('The delivery is on its way again.') }}">
+                    <form novalidate>
+                        <input type="hidden" name="id" value="{{ delivery.id }}">
+                        {{ ui.button({label: t('Send again'), type: 'submit', variant: 'ghost', small: true, icon: 'restore', attrs: {'aria-label': t('Send {action} again', {action: delivery.action})}}) }}
+                    </form>
+                </fb-form>
+                {% endif %}
+            </li>
+            {%- endfor %}
+        </ul>
+        {% endif %}
+    </section>
+
+    {% if can('frootbox/webhooks/webhook.rotate-secret') %}
+    <dialog class="fb-dialog" id="webhook-rotate" aria-labelledby="webhook-rotate-title">
+        <fb-form action="frootbox/webhooks/webhook.rotate-secret" show="webhook-new-secret" done="{{ t('The webhook has a new secret.') }}">
+            <form novalidate>
+                <input type="hidden" name="id" value="{{ webhook.id }}">
+                <div class="fb-dialog__body">
+                    <h2 class="fb-dialog__title" id="webhook-rotate-title">{{ t('Make a new secret?') }}</h2>
+                    <p>{{ t('The old secret stops working at once. Until the receiver has the new one, it rejects the messages.') }}</p>
+                </div>
+                <div class="fb-dialog__actions">
+                    {{ ui.button({label: t('Cancel'), variant: 'outline', attrs: {commandfor: 'webhook-rotate', command: 'close', autofocus: true}}) }}
+                    {{ ui.button({label: t('Make a new secret'), type: 'submit'}) }}
+                </div>
+            </form>
+        </fb-form>
+    </dialog>
+    {% endif %}
+
+    {% if can('frootbox/webhooks/webhook.delete') %}
+    <dialog class="fb-dialog" id="webhook-delete" aria-labelledby="webhook-delete-title">
+        <fb-form action="frootbox/webhooks/webhook.delete" next="{{ list }}" done="{{ t('The webhook is deleted.') }}">
+            <form novalidate>
+                <input type="hidden" name="id" value="{{ webhook.id }}">
+                <div class="fb-dialog__body">
+                    <h2 class="fb-dialog__title" id="webhook-delete-title">{{ t('Delete {title}?', {title: webhook.title}) }}</h2>
+                    <p>{{ t('Nothing more is sent to the address, and its deliveries go as well.') }}</p>
+                </div>
+                <div class="fb-dialog__actions">
+                    {{ ui.button({label: t('Cancel'), variant: 'outline', attrs: {commandfor: 'webhook-delete', command: 'close', autofocus: true}}) }}
+                    {{ ui.button({label: t('Delete'), variant: 'danger-solid', type: 'submit'}) }}
+                </div>
+            </form>
+        </fb-form>
+    </dialog>
+    {% endif %}
+    {% endif %}
+</div>
+{% endblock %}
