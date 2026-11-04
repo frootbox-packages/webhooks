@@ -1,3 +1,5 @@
 title: Webhooks
 description: Tell other services about changes, signed after Standard Webhooks and sent in the background
 extension: Frootbox\Webhooks\WebhooksExtension
+# For the extension directory (decision 0282).
+icon: icon.svg
